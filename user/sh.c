@@ -39,6 +39,26 @@ _gettoken(char *s, char **p1, char **p2)
 		if (debug_) user_debug("EOL\n");
 		return 0;
 	}
+
+    if (*s == '"')
+	{
+		*p1 = s + 1;
+		s++;
+		while (*s && *s != '"')
+			s++;
+		if (*s == 0)
+		{
+			writef("\" does not match\n");
+			return -1;
+		}
+		*s = 0;
+		s++;
+		while (*s && !strchr(WHITESPACE SYMBOLS, *s))
+			s++;
+		*p2 = s;
+		return 'w';
+	}
+
 	if(strchr(SYMBOLS, *s)){
 		t = *s;
 		*p1 = s;
@@ -247,11 +267,15 @@ readline(char *buf, u_int n)
 				writef("read error: %e", r);
 			exit();
 		}
-		if(buf[i] == '\b'){
-			if(i > 0)
+		if (buf[i] == 0x7f)
+		{
+			if (i > 0)
+			{
+				fwritef(1, "\x1b[1D\x1b[K");
 				i -= 2;
+			}
 			else
-				i = 0;
+				i = -1;
 		}
 		if(buf[i] == '\r' || buf[i] == '\n'){
 			buf[i] = 0;
