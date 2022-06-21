@@ -81,8 +81,9 @@ void
 runcmd(char *s)
 {
 	char *argv[MAXARGS], *t;
-	int argc, c, i, r, p[2], fd, rightpipe;
+	int argc, c, i, r, p[2], fd, rightpipe, pid;
 	int fdnum;
+    int hang = 0;
 	rightpipe = 0;
 	gettoken(s, 0);
 again:
@@ -92,6 +93,9 @@ again:
 		switch(c){
 		case 0:
 			goto runit;
+        case '&':
+            hang = 1;
+            break;
 		case 'w':
 			if(argc == MAXARGS){
 				writef("too many arguments\n");
@@ -176,6 +180,17 @@ again:
                 goto runit;
             }
 			break;
+        case ';':
+            if ((r = fork()) < 0) {
+                    writef("; fork error");
+                    exit();
+                }
+            if (r == 0) {
+                goto again;
+            } else {
+                goto runit;
+            }
+
 		}
 	}
 
@@ -185,19 +200,32 @@ runit:
 		return;
 	}
 	argv[argc] = 0;
-	if (1) {
+	if (debug_) {
 		writef("[%08x] SPAWN:", env->env_id);
 		for (i=0; argv[i]; i++)
 			writef(" %s", argv[i]);
 		writef("\n");
 	}
 
-	if ((r = spawn(argv[0], argv)) < 0)
-		writef("spawn error: %s: %e\n", argv[0], r);
+	if ((r = spawn(argv[0], argv)) < 0) {
+        writef("spawn error: %s: %e\n", argv[0], r);
+        exit();
+    }
 	close_all();
-	if (r >= 0) {
+	if (r > 0) {
 		if (debug_) user_debug("[%08x] WAIT %s %08x\n", env->env_id, argv[0], r);
-		wait(r);
+        if (!hang) {
+            if (debug_) user_debug("!hang, wait exit");
+            wait(r);
+        } else {
+            pid = fork();
+            if (pid == 0) {
+                if (debug_) user_debug("hang and child shell, wait exit");
+                wait(r);
+                exit();
+            }
+        }
+		
 	}
 	if (rightpipe) {
 		if (debug_) user_debug("[%08x] WAIT right-pipe %08x\n", env->env_id, rightpipe);
@@ -307,16 +335,17 @@ umain(int argc, char **argv)
     }
 		
 	for(;;){
-		if (interactive)
-			fwritef(1, "\n$ ");
+		if (interactive) { fwritef(1, "\n$ "); }
+
 		readline(buf, sizeof buf);
-		
-		if (buf[0] == '#')
-			continue;
-		if (echocmds)
-			fwritef(1, "# %s\n", buf);
-		if ((r = fork()) < 0)
-			user_panic("fork: %e", r);
+		if (buf[0] == '#') { continue; }
+		if (echocmds) { fwritef(1, "# %s\n", buf); }
+		if (strcmp(buf, "exit") == 0) { // implement exit
+            exit();
+        }
+		if ((r = fork()) < 0) {
+            user_panic("fork: %e", r);
+        }
 		if (r == 0) {
 			runcmd(buf);
 			exit();

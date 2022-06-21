@@ -49,7 +49,7 @@ block_is_mapped(u_int blockno)
 u_int
 va_is_dirty(u_int va)
 {
-	return (* vpt)[VPN(va)] & PTE_R;
+	return (* vpt)[VPN(va)] & PTE_D;
 }
 
 // Overview:
