@@ -37,7 +37,7 @@ open(const char *path, int mode)
 	int r;
 	u_int va;
 	u_int i;
-
+    u_int tmp_mode;
 	// Step 1: Alloc a new Fd, return error code when fail to alloc.
 	// Hint: Please use fd_alloc.
     if ((r = fd_alloc(&fd)) < 0) {
@@ -45,6 +45,20 @@ open(const char *path, int mode)
     }
 	// Step 2: Get the file descriptor of the file to open.
 	// Hint: Read fsipc.c, and choose a function.
+
+    // implement O_EXCL
+    if (mode & O_EXCL) {
+        tmp_mode = mode & ~O_CREAT;
+        if (fsipc_open(path, tmp_mode, fd) >= 0) {
+            ffd = (struct Filefd *)fd;
+            fileid = ffd->f_fileid;
+            fsipc_close(fileid);
+            syscall_mem_unmap(0, fd);
+            return -O_EXCL;
+        }
+    }
+
+
     if ((r = fsipc_open(path, mode, fd)) < 0) {
         return r;
     }
@@ -55,6 +69,20 @@ open(const char *path, int mode)
     ffd = (struct Filefd*)fd;
     fileid = ffd->f_fileid;
     size = ffd->f_file.f_size;
+
+    // implement O_TRUNC
+    if (((mode & O_RDWR) || (mode & O_WRONLY)) && (mode & O_TRUNC)) {
+        if ((r = fsipc_set_size(fileid, 0)) < 0) {
+            return r;
+        }
+        size = 0;
+    }
+
+    // implement O_APPEND
+    if (mode & O_APPEND) {
+        fd->fd_offset = size;
+    }
+
 	// Step 4: Alloc memory, map the file content into memory.
     for (i = 0;i < size;i += BY2BLK) {
         r = fsipc_map(fileid, i, va + i);

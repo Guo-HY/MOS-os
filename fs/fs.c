@@ -45,10 +45,11 @@ block_is_mapped(u_int blockno)
 
 // Overview:
 //	Check if this virtual address is dirty. (check PTE_D bit)
+// change !! PTE_D -> PTE_R
 u_int
 va_is_dirty(u_int va)
 {
-	return (* vpt)[VPN(va)] & PTE_D;
+	return (* vpt)[VPN(va)] & PTE_R;
 }
 
 // Overview:
@@ -711,7 +712,7 @@ file_open(char *path, struct File **file)
 //	On success set *file to point at the file and return 0.
 // 	On error return < 0.
 int
-file_create(char *path, struct File **file)
+file_create(char *path, struct File **file, int type)
 {
 	char name[MAXNAMELEN];
 	int r;
@@ -730,6 +731,7 @@ file_create(char *path, struct File **file)
 	}
 
 	strcpy((char *)f->f_name, name);
+    f->f_type = type;
 	*file = f;
 	return 0;
 }
