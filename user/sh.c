@@ -255,12 +255,75 @@ runit:
 	exit();
 }
 
+
+int islatest_hist = 0;
+int now_poi = 0;
+
+int history(char *buf, int up) {
+    static char history_info[4 * 1024 * 1024];
+    static int size = 0;
+    int i, j, end;
+    if (!islatest_hist) {
+        islatest_hist = 1;
+        struct Stat state;
+        if (stat(".history", &state) < 0) {
+            return 0;
+        }
+        int f = open(".history", O_RDONLY);
+        if (f < 0) {
+            return 0;
+        }
+        read(f, history_info, state.st_size);
+        history_info[state.st_size] = 0;
+        close(f);
+        now_poi = state.st_size - 1;
+        size = state.st_size;
+    }
+    if (now_poi == size - 1 && up == -1 || now_poi <= 0 && up == 1) {
+        return 0;
+    }
+    if (up == 1) {  // up
+        end = now_poi;
+        for (now_poi = now_poi - 1; now_poi >= 0 && history_info[now_poi] != '\n'; now_poi--);
+
+        for (j = 0, i = now_poi + 1; i < end; i++, j++) {
+            buf[j] = history_info[i];
+        }
+        buf[j] = 0;
+        fwritef(1, "%s", buf);
+        return strlen(buf);
+    }
+    if (up == -1) { // down
+        for (j = 0, now_poi = now_poi + 1; history_info[now_poi] != '\n'; now_poi++, j++) {
+            buf[j] = history_info[now_poi];
+        }
+        buf[j] = 0;
+        fwritef(1, "%s", buf);
+        return strlen(buf);
+    }
+    return 0;
+}
+
+void savecmd(char *buf) {
+    if (buf[0] == '\0') {
+        return;
+    }
+    islatest_hist = 0;
+    int f = open(".history", O_APPEND | O_WRONLY | O_CREAT);
+    if (f < 0) {
+        fwritef(1, "connot open history\n");
+        return;
+    }
+    fwritef(f, "%s\n", buf);
+    close(f);
+}
+
 void
 readline(char *buf, u_int n)
 {
 	int i, r;
-
 	r = 0;
+    char tmp;
 	for(i=0; i<n; i++){
 		if((r = read(0, buf+i, 1)) != 1){
 			if(r < 0)
@@ -274,10 +337,41 @@ readline(char *buf, u_int n)
 				fwritef(1, "\x1b[1D\x1b[K");
 				i -= 2;
 			}
-			else
-				i = -1;
-		}
-		if(buf[i] == '\r' || buf[i] == '\n'){
+			else {
+                i = -1;
+            }
+				
+		} else if (buf[i] == '\x1b') {
+            read(0, &tmp, 1);
+            if (tmp != '[') {
+                user_panic("\\x1b is not followed by '['");
+            }
+            read(0, &tmp, 1);
+            if (tmp == 'A') { // up
+                if (i) {
+                    fwritef(1, "\x1b[1B\x1b[%dD\x1b[K", i);
+                } else {
+                    fwritef(1, "\x1b[1B");
+                }
+                i = history(buf, 1);
+            } else if(tmp == 'B') {  // down
+                if (i) {
+                    fwritef(1, "\x1b[1A\x1b[%dD\x1b[K", i);
+                } else {
+                    fwritef(1, "\x1b[1A");
+                }
+                i = history(buf, -1);
+            } 
+            else if(tmp == 'C') 
+            {
+                fwritef(1, "\x1b[1D");
+            } 
+            else if(tmp == 'D') 
+            {
+                fwritef(1, "\x1b[1C");
+            }
+            i--;
+        } else if(buf[i] == '\r' || buf[i] == '\n'){
 			buf[i] = 0;
 			return;
 		}
@@ -362,6 +456,10 @@ umain(int argc, char **argv)
 		if (interactive) { fwritef(1, "\n$ "); }
 
 		readline(buf, sizeof buf);
+        if (buf[0] == 0) {
+            continue;
+        }
+        savecmd(buf);
 		if (buf[0] == '#') { continue; }
 		if (echocmds) { fwritef(1, "# %s\n", buf); }
 		if (strcmp(buf, "exit") == 0) { // implement exit

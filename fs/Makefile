@@ -36,6 +36,7 @@ USERAPPS := $(user_dir)/num.b  \
 		 	$(user_dir)/mkdir.b \
 		 	$(user_dir)/touch.b \
 		 	$(user_dir)/tree.b\
+			$(user_dir)/history.b
 
 
 FSIMGFILES := motd newmotd $(user_dir)/testarg.b $(user_dir)/init.b $(USERAPPS) test/
