@@ -26,18 +26,19 @@ FSLIB :=	fs.o \
 		ide.o \
 		test.o
 
-USERAPPS :=  $(user_dir)/num.b  \
-			 $(user_dir)/echo.b \
-			 $(user_dir)/ls.b \
-			 $(user_dir)/sh.b  \
-			 $(user_dir)/cat.b \
-		 $(user_dir)/testptelibrary.b\
-		 $(user_dir)/counter.b\
-		 $(user_dir)/mkdir.b \
-		 $(user_dir)/touch.b
+USERAPPS := $(user_dir)/num.b  \
+			$(user_dir)/echo.b \
+			$(user_dir)/ls.b \
+			$(user_dir)/sh.b  \
+			$(user_dir)/cat.b \
+		 	$(user_dir)/testptelibrary.b\
+		 	$(user_dir)/counter.b\
+		 	$(user_dir)/mkdir.b \
+		 	$(user_dir)/touch.b \
+		 	$(user_dir)/tree.b\
 
 
-FSIMGFILES := motd newmotd $(user_dir)/testarg.b $(user_dir)/init.b $(USERAPPS)
+FSIMGFILES := motd newmotd $(user_dir)/testarg.b $(user_dir)/init.b $(USERAPPS) test/
 
 CFLAGS += -nostdlib -static
 
@@ -70,9 +71,9 @@ all: serv.x fs.img serv.b
 
 fs.img: $(FSIMGFILES)
 	dd if=/dev/zero of=../gxemul/fs.img bs=4096 count=1024 2>/dev/null
-	gcc $(INCLUDES) fsformat.c -o $(tools_dir)/fsformat -m32
+	gcc $(INCLUDES) -g fsformat.c -o $(tools_dir)/fsformat -m32
 	chmod +x $(tools_dir)/fsformat
-	$(tools_dir)/fsformat ../gxemul/fs.img $(FSIMGFILES)
+	$(tools_dir)/fsformat ../gxemul/fs.img -r $(FSIMGFILES)
 
 .PHONY: clean
 
