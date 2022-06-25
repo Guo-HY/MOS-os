@@ -291,7 +291,9 @@ int spawn(char *prog, char **argv)
 
 
 	struct Trapframe *tf;
-	writef("\n::::::::::spawn size : %x  sp : %x::::::::\n",size,esp);
+    if (debug) {
+    	writef("\n::::::::::spawn size : %x  sp : %x::::::::\n",size,esp);
+    }
 	tf = &(envs[ENVX(child_envid)].env_tf);
 	tf->pc = UTEXT;
 	tf->regs[29]=esp;
@@ -315,9 +317,10 @@ int spawn(char *prog, char **argv)
 
 				if((r = syscall_mem_map(0,va,child_envid,va,(PTE_V|PTE_R|PTE_LIBRARY)))<0)
 				{
-
-					writef("va: %x   child_envid: %x   \n",va,child_envid);
-					writef("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                    if (debug) {
+					    writef("va: %x   child_envid: %x   \n",va,child_envid);
+					    writef("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
+                    }
 					return r;
 				}
 			}
