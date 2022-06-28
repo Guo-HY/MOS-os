@@ -69,3 +69,7 @@ sys_call_table:                         // Syscall Table
     .word sys_cgetc
     .word sys_write_dev
     .word sys_read_dev
+    .word sys_list_env
+    .word sys_declare
+    .word sys_unset
+    .word sys_get_env

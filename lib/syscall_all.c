@@ -503,3 +503,151 @@ int sys_read_dev(int sysno, u_int va, u_int dev, u_int len)
     bcopy((void*)(dev + kseg1), (void*)va, len);
     return 0;
 }
+
+int
+_strcmp(const char *p, const char *q)
+{
+	while (*p && *p == *q) {
+		p++, q++;
+	}
+
+	if ((u_int)*p < (u_int)*q) {
+		return -1;
+	}
+
+	if ((u_int)*p > (u_int)*q) {
+		return 1;
+	}
+
+	return 0;
+}
+
+char *
+_strcpy(char *dst, const char *src)
+{
+	char *ret;
+
+	ret = dst;
+
+	while ((*dst++ = *src++) != 0)
+		;
+
+	return ret;
+}
+
+#define ENV_VAR_MAX 128
+#define ENV_NAME_MAX 16
+#define ENV_VALUE_MAX 64
+
+#define E_ENV_VAR_READONLY 1
+#define E_ENV_VAR_SET 2
+
+struct Env_var{
+    char name[ENV_VAR_MAX];
+    char value[ENV_VALUE_MAX];
+    u_int read_only;
+    u_int global;
+    u_int envid;
+};
+int var_num = 0;
+struct Env_var env_vars[ENV_VAR_MAX];
+
+int sys_list_env(int sysno, u_int env_list, u_int envid, u_int _num) 
+{
+    int* num = (int*)_num;
+    int i,j;
+    struct Env_var *list = (struct Env_var *)env_list;
+    for (i = 0, j = 0;i < ENV_VAR_MAX; i++) {
+        if (env_vars[i].name[0]) {
+            if (env_vars[i].global || env_vars[i].envid == envid) {
+                list[j].envid = env_vars[i].envid;
+                list[j].global = env_vars[i].global;
+                list[j].read_only = env_vars[i].read_only;
+                _strcpy(list[j].name, env_vars[i].name);
+                _strcpy(list[j].value, env_vars[i].value);
+                j++;
+            }
+        }
+    }
+    *num = j;
+    return 0;
+}
+
+static int set_env(char *name, char *value, u_int read_only, u_int global, u_int envid) 
+{
+    int i;
+    if (var_num == ENV_VAR_MAX) {
+        return -1;
+    }
+    for (i = 0; i < ENV_VAR_MAX; i++) {
+        if (env_vars[i].name[0] == 0) {
+            _strcpy(env_vars[i].name, name);
+            _strcpy(env_vars[i].value, value);
+            env_vars[i].read_only = read_only;
+            env_vars[i].global = global;
+            env_vars[i].envid = envid;
+            var_num++;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int unset_env(char *name, u_int envid) 
+{
+    int i;
+    for (i = 0;i < ENV_VAR_MAX; i++) {
+        if (!_strcmp(env_vars[i].name, name) && !env_vars[i].read_only 
+            && (env_vars[i].global || env_vars[i].envid == envid)) {
+            var_num--;
+            env_vars[i].name[0] = 0;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+static int get_env(char *name, char *value, u_int* read_only, u_int* global, u_int envid) {
+    int i;
+    for (i = 0; i < ENV_VAR_MAX; i++) {
+        if (!_strcmp(name, env_vars[i].name) && (env_vars[i].global || env_vars[i].envid == envid)) {
+            _strcpy(value, env_vars[i].value);
+            *read_only = env_vars[i].read_only;
+            *global = env_vars[i].global;
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int sys_declare(int sysno, u_int _env_var) 
+{
+    struct Env_var *env_var = (struct Env_var *)_env_var;
+    u_int read_only, global;
+    char rvalue[ENV_VALUE_MAX];
+    int r;
+    r = get_env(env_var->name, rvalue, &read_only, &global, env_var->envid);
+    if (r == 0) {
+        if (read_only) {
+            return -E_ENV_VAR_READONLY;
+        }
+        unset_env(env_var->name, env_var->envid);
+    }
+    r = set_env(env_var->name, env_var->value, env_var->read_only, env_var->global, env_var->envid);
+    if (r < 0) {
+        return -E_ENV_VAR_SET;
+    }
+    return 0;
+}
+
+int sys_unset(int sysno, u_int _env_var)
+{
+    struct Env_var *env_var = (struct Env_var *)_env_var;
+    return unset_env(env_var->name, env_var->envid);
+}
+
+int sys_get_env(int sysno, u_int name, u_int value, u_int envid)
+{
+    u_int read_only, global;
+    return get_env((char*)name, (char*)value, read_only, global, envid);
+}

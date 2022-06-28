@@ -1,7 +1,124 @@
 #include "lib.h"
 #include <args.h>
 
+#define MAXARGS 16
+#define WHITESPACE " \t\r\n"
+#define SYMBOLS "<|>&;()"
+
 int debug_ = 0;
+
+#define ENV_VAR_MAX 128
+#define ENV_NAME_MAX 16
+#define ENV_VALUE_MAX 64
+#define E_ENV_VAR_READONLY 1
+#define E_ENV_VAR_SET 2
+struct Env_var{
+    char name[ENV_VAR_MAX];
+    char value[ENV_VALUE_MAX];
+    u_int read_only;
+    u_int global;
+    u_int envid;
+};
+
+
+void list_env() 
+{
+    int num;
+    int i;
+    struct Env_var env_vars[ENV_VAR_MAX];
+    fwritef(1, "\x1b[33m-*- ENVIRONMENT VARIABLES -*-\x1b[0m\n");
+    u_int envid = syscall_getenvid();
+    syscall_list_env(env_vars, envid, &num);
+    for (i = 0; i < num; i++) {
+        fwritef(1, "\x1b[36m%-16s\x1b[0m\x1b[35m%-10s \x1b[0m\x1b[35m%-10s\x1b[0m%s\n", env_vars[i].name, env_vars[i].read_only ? "READ-ONLY" : "", env_vars[i].global ? "GLOBAL" : "LOCAL", env_vars[i].value);
+    }
+}
+
+
+void split(char *arg, char *name, char *value)
+{
+    int i, j;
+    value[0] = 0;
+    for (i = 0, j = 0; arg[i] != 0 && arg[i] != '='; i++, j++) {
+        name[j] = arg[i];
+    }
+    name[j] = 0;
+    if (arg[i] == '=') {
+        for (i = i + 1, j=0; arg[i] != 0; i++, j++) {
+            value[j] = arg[i];
+        }
+        value[j] = 0;
+    }
+}
+
+void declare(char *name, char *value, u_int read_only, u_int global) 
+{
+    struct Env_var env_var;
+    if (global) {
+        env_var.envid = 0;
+    } else {
+        env_var.envid = syscall_getenvid();
+    }
+    env_var.global = global;
+    strcpy(env_var.name, name);
+    strcpy(env_var.value, value);
+    env_var.read_only = read_only;
+
+    int r;
+
+    r = syscall_declare(&env_var);
+    if (r == -E_ENV_VAR_READONLY) {
+        fwritef(1, "error : attept to change READONLY var\n");
+    } else if (r == -E_ENV_VAR_SET) {
+        fwritef(1, "set env %s fail !\n", name); 
+    }
+}
+
+int inner_cmd(int argc, char **argv)
+{
+    char name[ENV_NAME_MAX];
+    char value[ENV_VALUE_MAX];
+    if (!strcmp(argv[0], "clear")) {
+        writef("\x1b[2J\x1b[H");
+		return 1;
+    }
+
+    if (!strcmp(argv[0], "declare")) {
+        if (argc == 1) {
+            list_env();
+        } else if (argc == 2) {
+            split(argv[1], name, value);
+            declare(name, value, 0, 0);
+        } else if (argc == 3) {
+            split(argv[2], name, value);
+            if (!strcmp(argv[1], "-x")) {
+                declare(name, value, 0, 1);
+            } else if(!strcmp(argv[1], "-r")) {
+                declare(name, value, 1, 0);
+            } else if(!strcmp(argv[1], "-rx") || !strcmp(argv[1], "-xr")) {
+                declare(name, value, 1, 1);
+            }
+        } else {
+            fwritef(1, "usage : declare [-xr] [NAME [=VALUE]]\n");
+        }
+        return 1;
+    }
+    if (!strcmp(argv[0], "unset")) {
+        if (argc == 2) {
+            struct Env_var env_var;
+            strcpy(env_var.name, argv[1]);
+            env_var.envid = syscall_getenvid();
+            syscall_unset(&env_var);
+        } else {
+            fwritef(1, "usage : unset NAME\n");
+        }
+        return 1;
+    }
+
+    return 0;
+}
+
+
 
 //
 // get the next token from string s
@@ -15,8 +132,7 @@ int debug_ = 0;
 //
 // eventually (once we parse the space where the nul will go),
 // words get nul-terminated.
-#define WHITESPACE " \t\r\n"
-#define SYMBOLS "<|>&;()"
+
 
 int
 _gettoken(char *s, char **p1, char **p2)
@@ -58,6 +174,16 @@ _gettoken(char *s, char **p1, char **p2)
 		*p2 = s;
 		return 'w';
 	}
+    if (*s == '$' && *(s + 1) && !strchr(WHITESPACE, *(s + 1))) 
+    {
+        *p1 = s + 1;
+        s++;
+        while (*s && !strchr(WHITESPACE, *s))
+			s++;
+		*s = 0;
+		*p2 = s + 1;
+		return '$';
+    }
 
 	if(strchr(SYMBOLS, *s)){
 		t = *s;
@@ -96,7 +222,7 @@ gettoken(char *s, char **p1)
 	return c;
 }
 
-#define MAXARGS 16
+
 void
 runcmd(char *s)
 {
@@ -105,6 +231,9 @@ runcmd(char *s)
 	int fdnum;
     int hang = 0;
 	rightpipe = 0;
+    char buffer[MAXARGS][65];
+    int buf_len = 0;
+    u_int read_only, global;
 	gettoken(s, 0);
 again:
 	argc = 0;
@@ -123,6 +252,22 @@ again:
 			}
 			argv[argc++] = t;
 			break;
+        case '$':
+            if (argc == MAXARGS)
+			{
+				writef("too many arguments\n");
+				exit();
+			}
+            u_int envid = syscall_getenvid();
+            if (syscall_get_env((u_int)t, (u_int)buffer[buf_len], envid) < 0) 
+            {
+                argv[argc++] = t;
+            } 
+            else 
+            {
+                argv[argc++] = buffer[buf_len++];
+            }
+            break;
 		case '<':
 			if(gettoken(0, &t) != 'w'){
 				writef("syntax error: < not followed by word\n");
@@ -227,6 +372,10 @@ runit:
 		writef("\n");
 	}
 
+    if (inner_cmd(argc, argv)) {
+        exit();
+    }
+
 	if ((r = spawn(argv[0], argv)) < 0) {
         writef("spawn error: %s: %e\n", argv[0], r);
         exit();
@@ -279,7 +428,7 @@ int history(char *buf, int up) {
         now_poi = state.st_size - 1;
         size = state.st_size;
     }
-    if (now_poi == size - 1 && up == -1 || now_poi <= 0 && up == 1) {
+    if ((now_poi == size - 1 && up == -1) || (now_poi <= 0 && up == 1)) {
         return 0;
     }
     if (up == 1) {  // up
@@ -411,11 +560,11 @@ umain(int argc, char **argv)
 	writef("::                                                         ::\n");
 	writef(":::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::\n");
 
-    writef("argc = %d ; argv: ", argc);
-    for(i = 0;i < argc; i++) {
-        writef("%s ",argv[i]);
-    }
-    writef("\n");
+    // writef("argc = %d ; argv: ", argc);
+    // for(i = 0;i < argc; i++) {
+    //     writef("%s ",argv[i]);
+    // }
+    // writef("\n");
     
 	ARGBEGIN{
 	case 'd':
@@ -462,7 +611,7 @@ umain(int argc, char **argv)
         savecmd(buf);
 		if (buf[0] == '#') { continue; }
 		if (echocmds) { fwritef(1, "# %s\n", buf); }
-		if (strcmp(buf, "exit") == 0) { // implement exit
+        if (!strcmp(buf, "exit")) {
             exit();
         }
 		if ((r = fork()) < 0) {

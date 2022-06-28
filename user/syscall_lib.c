@@ -97,3 +97,23 @@ int syscall_read_dev(u_int va, u_int dev, u_int len)
 {
     return msyscall(SYS_read_dev, va, dev, len, 0, 0);
 }
+
+int syscall_list_env(u_int env_list, u_int envid, u_int _num)
+{
+    return msyscall(SYS_list_env, env_list, envid, _num, 0, 0);
+}
+
+int syscall_declare(u_int _env_var)
+{
+    return msyscall(SYS_declare, _env_var, 0, 0, 0, 0);
+}
+
+int syscall_unset(u_int _env_var)
+{
+    return msyscall(SYS_unset, _env_var, 0, 0, 0, 0);
+}
+
+int syscall_get_env(u_int name, u_int value, u_int envid)
+{
+    return msyscall(SYS_get_env, name, value, envid, 0, 0);
+}

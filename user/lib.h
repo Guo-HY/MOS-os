@@ -68,6 +68,10 @@ void syscall_ipc_recv(u_int dstva);
 int syscall_cgetc();
 int syscall_write_dev(u_int va, u_int dev, u_int len);
 int syscall_read_dev(u_int va, u_int dev, u_int len);
+int syscall_list_env(u_int env_list, u_int envid, u_int _num);
+int syscall_declare(u_int _env_var);
+int syscall_unset(u_int _env_var);
+int syscall_get_env(u_int name, u_int value, u_int envid);
 
 // string.c
 int strlen(const char *s);
